@@ -1,6 +1,7 @@
 # coding: utf-8
 
-# python src/run_parallel.py src/tasks_config.challenge.json -l learners.sample_learners.ESLearner
+# Usage
+# python src/run_parallel.py src/tasks_config.challenge.json --worlds 128 --reduction-interval 100 --episodes 10
 
 from __future__ import absolute_import
 from __future__ import division
@@ -19,12 +20,13 @@ from core.session import Session
 
 from multiprocessing import Process, Pipe
 import numpy as np
+import pickle
 
 def arg_parse():
     op = OptionParser("Usage: %prog [options] "
                       "(tasks_config.json | tasks_config.py)")
-    op.add_option('-o', '--output', default='results.out',
-                  help='File where the simulation results are saved.')
+    op.add_option('-o', '--output', default='weight.pklb',
+                  help='File where the simulation results(model weight) are saved.')
     op.add_option('--scramble', action='store_true', default=False,
                   help='Randomly scramble the words in the tasks for '
                   'a human player.')
@@ -35,7 +37,7 @@ def arg_parse():
                   help='adds some delay between each timestep for easier'
                   ' visualization.')
     op.add_option('-l', '--learner',
-                  default='learners.human_learner.HumanLearner',
+                  default='learners.es_learner.ESLearner',
                   help='Defines the type of learner.')
     op.add_option('-v', '--view',
                   default='BaseView',
@@ -53,11 +55,11 @@ def arg_parse():
                   help='Uses standard output instead of curses library.')
     op.add_option('--bit-mode', action='store_true', default=False,
                   help='Environment receives input in bytes.')
-    op.add_option('--worlds', default=25, type=int,
-                  help='The number of threads.')
-    op.add_option('--reduction-interval', default=200, type=int,
+    op.add_option('--worlds', default=10, type=int,
+                  help='The number of process used for searching.')
+    op.add_option('--reduction-interval', default=500, type=int,
                   help='weights are updated every reduction interval')
-    op.add_option('--episodes', default=10, type=int,
+    op.add_option('--episodes', default=100, type=int,
                   help='the number of episodes')
     opt, args = op.parse_args()
     if len(args) == 0:
@@ -73,55 +75,59 @@ def main():
     
     # MAKE SEED_WEIGHT
     logger.info("Sampling seed weight")
+    # TODO: read weight from pickle file pointed if exists
+    seed_weight = None
     master_learner = create_learner(opt.learner, None, opt.learner_cmd, opt.learner_port, not opt.bit_mode)
-    master_learner.net.set_base_weight()
-    seed_weight = master_learner.net.get_base_weight()
+    master_learner.net.set_weight(seed_weight)
     
-    # TODO: MAKE PROCESS
+    # MAKE PROCESSES
     logger.info("Starting new processes")
     process_info = []
     for i in range(opt.worlds):    
         p_conn, c_conn = Pipe()
-        p = Process(target=process_world, args=(c_conn, opt, tasks_config_file, i, seed_weight))
+        p = Process(target=process_world, args=(c_conn, opt, tasks_config_file, i))
         p.daemon = True
         p.start()
         process_info.append((p, p_conn))
     
-    # TODO: LEARNING LOOP & REDUCTION
+    # LEARNING LOOP & REDUCTION
     logger.info("learning loops begin")
     reward_list = None
     for episode_id in range(opt.episodes):
-        # sample and send weight 
+        weight = master_learner.net.get_weight()
         for p, p_conn in process_info:
-            p_conn.send((reward_list, episode_id, opt.reduction_interval, np.random.randint(0, np.iinfo(np.int32).max)))
+            p_conn.send((episode_id, opt.reduction_interval, np.random.randint(0, np.iinfo(np.int32).max), weight))
         reward_list = []
         for p, p_conn in process_info:
             ret = p_conn.recv()
             if ret is None:
                 raise Exception('sub process error')
             reward_list.append(ret)
-        logger.info("episode %d %s"%(episode_id, str(reward_list)), )
+        reward_mean = float(np.asarray([t[0] for t in reward_list]).mean())
+        master_learner.net.move_base_weight(reward_list)
+        with open(opt.output, 'wb') as f:
+            pickle.Pickler(f, protocol=2).dump(master_learner.net.get_weight())
+        logger.info("episode %d %f\n%s"%(episode_id, reward_mean, str(reward_list)) )
         
     for p, p_conn in process_info:
         p_conn.send(None)
+    
+    logger.info("all ended")
 
-def process_world(conn, opt, tasks_config_file, world_id, seed_weight):
+def process_world(conn, opt, tasks_config_file, world_id):
     try:
         serializer = StandardSerializer()
         task_scheduler = create_tasks_from_config(tasks_config_file)
         env = Environment(serializer, task_scheduler, opt.scramble, opt.max_reward_per_task, not opt.bit_mode)
         learner = create_learner(opt.learner, serializer, opt.learner_cmd, opt.learner_port, not opt.bit_mode)
-        learner.net.set_base_weight(seed_weight)
         session = Session(env, learner, opt.time_delay)
         
         args = conn.recv()
         while not (args is None):
-            last_reward_list, episode_id, step_count, seed = args
-            if not (last_reward_list is None):
-                learner.net.move_base_weight(last_reward_list)
+            episode_id, step_count, seed, weight = args
             # INTERACTION BETWEEN ENVIRONMENT AND AGENT
-            learner.net.sample_genotype(seed)
-            episode_reward = session.iterate(step_count)
+            learner.net.set_genotype_weight(weight, seed)
+            episode_reward = session.iterate_n(step_count)
             # save_results(session, opt.output)  
             conn.send((episode_reward, seed))
             args = conn.recv()
