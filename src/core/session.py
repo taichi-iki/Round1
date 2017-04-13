@@ -67,6 +67,38 @@ class Session:
             self._total_time += 1
             self._task_time[self._current_task.get_name()] += 1
             self.total_time_updated(self._total_time)
+    
+    def iterate_n(self, step_count):
+        token = None
+        self.total_time_updated(self._total_time)
+        self.total_reward_updated(self._total_reward)
+        self._stop = False
+        
+        reward_sum = 0
+        while (not self._stop) and step_count > 0:
+            # first speaks the environment one token (one bit)
+            token, reward = self._env.next(token)
+            self.env_token_updated(token)
+            self._learner.try_reward(reward)
+            self.accumulate_reward(reward)
+            if reward is not None:
+                reward_sum += reward
+            
+            # allow some time before processing the next iteration
+            if self._sleep > 0:
+                time.sleep(self._sleep)
+            
+            # then speaks the learner one token
+            token = self._learner.next(token)
+            self.learner_token_updated(token)
+            
+            # and we loop
+            self._total_time += 1
+            self._task_time[self._current_task.get_name()] += 1
+            self.total_time_updated(self._total_time)
+            step_count -= 1
+        
+        return reward_sum
 
     def stop(self):
         self._stop = True
