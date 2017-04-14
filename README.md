@@ -1,3 +1,18 @@
+# DNN with Evolution Strategies Learner (experiment) #
+
+## Usage ##
+
+	python src/run_parallel.py src/tasks_config.challenge.json --worlds 128 --reduction-interval 100 --episodes 10
+
+1. worlds: the number of subproess which have own env, learner and session
+2. reduction-interval: every interval steps, weights and rewards of subprocesses are reduced to calculate gradient
+3. episodes: the number of reduction
+
+Though this approach hasn't completed any task, slight improvment on mean rewards.
+
+![graph](https://github.com/taichi-iki/Round1/blob/master/es_learner_1.PNG)
+
+
 # General AI Challenge - Round 1 #
 
 ## Overview ##

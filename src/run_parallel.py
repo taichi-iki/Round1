@@ -25,7 +25,7 @@ import pickle
 def arg_parse():
     op = OptionParser("Usage: %prog [options] "
                       "(tasks_config.json | tasks_config.py)")
-    op.add_option('-o', '--output', default='weight.pklb',
+    op.add_option('-o', '--output', default='result',
                   help='File where the simulation results(model weight) are saved.')
     op.add_option('--scramble', action='store_true', default=False,
                   help='Randomly scramble the words in the tasks for '
@@ -105,9 +105,11 @@ def main():
             reward_list.append(ret)
         reward_mean = float(np.asarray([t[0] for t in reward_list]).mean())
         master_learner.net.move_base_weight(reward_list)
-        with open(opt.output, 'wb') as f:
+        with open(opt.output + '_weight.pklb', 'wb') as f:
             pickle.Pickler(f, protocol=2).dump(master_learner.net.get_weight())
-        logger.info("episode %d %f\n%s"%(episode_id, reward_mean, str(reward_list)) )
+        logger.info('episode %d %f\n%s'%(episode_id, reward_mean, str(reward_list)) )
+        with open(opt.output + '_reward.txt', 'a') as f:
+            print('episode %d %f\n%s'%(episode_id, reward_mean, str(reward_list)), file=f)
         
     for p, p_conn in process_info:
         p_conn.send(None)
@@ -127,6 +129,7 @@ def process_world(conn, opt, tasks_config_file, world_id):
             episode_id, step_count, seed, weight = args
             # INTERACTION BETWEEN ENVIRONMENT AND AGENT
             learner.net.set_genotype_weight(weight, seed)
+            del weight
             episode_reward = session.iterate_n(step_count)
             # save_results(session, opt.output)  
             conn.send((episode_reward, seed))

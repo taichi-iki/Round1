@@ -9,7 +9,7 @@ from learners.base import BaseLearner
 import numpy as np
 
 class network(object):
-    def __init__(self, time_step, embed_dim, char_count=256, sigma=0.1):
+    def __init__(self, time_step, embed_dim, char_count=256, sigma=0.01):
         self.embed_dim = embed_dim
         self.input_dim = 3*time_step*embed_dim
         self.char_count = char_count
@@ -26,17 +26,18 @@ class network(object):
     
     def set_weight(self, data=None):    
         if data is None:
+            scale=0.1
             self.embed = [
-                    np.random.normal(size=(self.char_count+1, self.embed_dim)), # env
-                    np.random.normal(size=(self.char_count+1, self.embed_dim)), # agent-action
-                    np.random.normal(size=(2+1, self.embed_dim)), # reward
+                    np.asarray(np.random.normal(size=(self.char_count+1, self.embed_dim)), dtype='float32')*scale, # env
+                    np.asarray(np.random.normal(size=(self.char_count+1, self.embed_dim)), dtype='float32')*scale, # agent-action
+                    np.asarray(np.random.normal(size=(2+1, self.embed_dim)), dtype='float32')*scale, # reward
                 ]
             self.W = []
             self.b = []
             last_dim = self.input_dim
             for d in self.unit_dim_list:
-                self.W.append(np.random.normal(size=(d, last_dim)))
-                self.b.append(np.random.normal(size=(d,)))
+                self.W.append(np.asarray(np.random.normal(size=(d, last_dim)), dtype='float32')*scale)
+                self.b.append(np.asarray(np.random.normal(size=(d,)), dtype='float32')*scale)
                 last_dim = d
         else:
             self.embed = data['embed']
@@ -53,11 +54,11 @@ class network(object):
         b_W = base_weight['W']
         b_b = base_weight['b']
         for i in range(len(b_embed)):
-            self.embed.append(b_embed[i] + self.sigma*np.random.normal(size=b_embed[i].shape))
+            self.embed.append(b_embed[i] + self.sigma*np.asarray(np.random.normal(size=b_embed[i].shape), dtype='float32'))
         for i in range(len(b_W)):
-            self.W.append(b_W[i] + self.sigma*np.random.normal(size=b_W[i].shape))
+            self.W.append(b_W[i] + self.sigma*np.asarray(np.random.normal(size=b_W[i].shape), dtype='float32'))
         for i in range(len(b_b)):
-            self.b.append(b_b[i] + self.sigma*np.random.normal(size=b_b[i].shape))
+            self.b.append(b_b[i] + self.sigma*np.asarray(np.random.normal(size=b_b[i].shape), dtype='float32'))
         np.random.set_state(tmp_state)
         
     def get_weight(self):
@@ -77,11 +78,11 @@ class network(object):
             tmp_state = np.random.get_state()
             np.random.seed(seed)
             for i in range(len(self.embed)):
-                self.embed[i] += np.random.normal(size=self.embed[i].shape)*factor
+                self.embed[i] += np.asarray(np.random.normal(size=self.embed[i].shape), dtype='float32')*factor
             for i in range(len(self.W)):
-                self.W[i] += np.random.normal(size=self.W[i].shape)*factor
+                self.W[i] += np.asarray(np.random.normal(size=self.W[i].shape), dtype='float32')*factor
             for i in range(len(self.b)):
-                self.b[i] += np.random.normal(size=self.b[i].shape)*factor
+                self.b[i] += np.asarray(np.random.normal(size=self.b[i].shape), dtype='float32')*factor
             np.random.set_state(tmp_state)
     
     def forward(self, x_env, x_action, x_reward):

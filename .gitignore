@@ -30,3 +30,6 @@ src/docs/source/internal.rst
 Makefile
 src/experimental
 .idea
+
+# result files
+result_*
